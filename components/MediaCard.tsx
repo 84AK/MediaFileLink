@@ -1,0 +1,127 @@
+'use client';
+
+import React from 'react';
+import { Copy, Trash2, ExternalLink, Image as ImageIcon, Film, Music, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useState } from 'react';
+import Image from 'next/image';
+
+interface MediaItem {
+  id: string;
+  file_name: string;
+  file_url: string;
+  file_type: string;
+  user_id?: string;
+  created_at: string;
+}
+
+
+interface MediaCardProps {
+  item: MediaItem;
+  onDelete: (id: string) => void;
+  isOwner?: boolean;
+}
+
+export default function MediaCard({ item, onDelete, isOwner = false }: MediaCardProps) {
+
+  const [copied, setCopied] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(item.file_url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const getIcon = () => {
+    switch (item.file_type) {
+      case 'video': return <Film className="w-5 h-5" />;
+      case 'audio': return <Music className="w-5 h-5" />;
+      default: return <ImageIcon className="w-5 h-5" />;
+    }
+  };
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="group relative bg-white rounded-3xl border border-zinc-100 overflow-hidden hover:shadow-xl hover:shadow-zinc-200/50 transition-all duration-500"
+    >
+      {/* Preview Area */}
+      <div className="aspect-video bg-zinc-50 flex items-center justify-center overflow-hidden relative">
+        {item.file_type === 'image' ? (
+          <div className="relative w-full h-full">
+            <Image
+              src={item.file_url}
+              alt={item.file_name}
+              fill
+              className="object-cover group-hover:scale-110 transition-transform duration-700"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        ) : item.file_type === 'video' ? (
+          <video src={item.file_url} className="w-full h-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-zinc-400">
+            <Music className="w-10 h-10" />
+            <span className="text-xs font-medium">Audio File</span>
+          </div>
+        )}
+        
+        {/* Overlay Actions */}
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
+          <button
+            onClick={copyToClipboard}
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-zinc-900 hover:scale-110 transition-transform"
+            title="URL 복사"
+          >
+            {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+          </button>
+          <a
+            href={item.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-zinc-900 hover:scale-110 transition-transform"
+            title="새 창에서 열기"
+          >
+            <ExternalLink className="w-5 h-5" />
+          </a>
+          {isOwner && (
+            <button
+              onClick={() => onDelete(item.id)}
+              className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-500 hover:scale-110 transition-transform"
+              title="삭제"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
+
+        </div>
+      </div>
+
+      {/* Info Area */}
+      <div className="p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-zinc-400">{getIcon()}</span>
+          <h3 className="text-sm font-semibold text-zinc-800 truncate" title={item.file_name}>
+            {item.file_name}
+          </h3>
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-bold">
+            {mounted ? new Date(item.created_at).toLocaleDateString() : '로딩 중...'}
+          </p>
+          {isOwner && (
+            <span className="text-[9px] bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">My File</span>
+          )}
+        </div>
+
+      </div>
+    </motion.div>
+  );
+}

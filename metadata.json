@@ -1,0 +1,5 @@
+{
+  "name": "MediaLink Hub",
+  "description": "Upload media files and get instant public URLs for sharing and embedding.",
+  "requestFramePermissions": []
+}

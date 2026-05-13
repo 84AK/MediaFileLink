@@ -1,0 +1,81 @@
+# 🌐 MediaLink Hub
+
+![MediaLink Hub Banner](https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6)
+
+**MediaLink Hub**는 누구나 쉽고 빠르게 이미지를 업로드하고 공유할 수 있는 **인스턴트 미디어 호스팅 플랫폼**입니다. 2026년 최신 웹 트렌드인 Bento Grid 레이아웃과 강력한 보안 체계를 갖추고 있습니다.
+
+---
+
+## ✨ 주요 기능
+
+- **Bento Grid UI**: 정보를 직관적인 박스 형태로 배치하여 시각적으로 아름답고 정돈된 경험 제공.
+- **익명 인증 (Anonymous Auth)**: 별도의 가입 없이도 개인화된 업로드 기록 관리 가능.
+- **소유권 보호**: 본인이 업로드한 미디어만 관리(삭제)할 수 있는 보안 시스템.
+- **드래그 앤 드롭 업로드**: 직관적인 파일 업로드 인터페이스 및 10MB 크기 제한.
+- **반응형 디자인**: 모바일과 데스크탑 어디서나 완벽하게 동작하는 레이아웃.
+
+## 🛠 Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Styling**: Tailwind CSS v4
+- **Animation**: Framer Motion
+- **Database & Auth**: Supabase
+- **Deployment**: Vercel
+
+---
+
+## 🚀 시작하기
+
+### 1. 필수 조건
+- [Node.js](https://nodejs.org/) (최신 LTS 권장)
+- [Supabase](https://supabase.com/) 계정 및 프로젝트
+
+### 2. 설치
+```bash
+npm install
+```
+
+### 3. 환경 변수 설정
+`.env.local` 파일을 생성하고 아래 정보를 입력하세요:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+```
+
+### 4. 데이터베이스 설정 (SQL Editor)
+Supabase SQL Editor에서 아래 명령어를 순차적으로 실행하세요:
+
+#### 테이블 생성
+```sql
+create table media_files (
+  id uuid primary key default gen_random_uuid(),
+  file_name text not null,
+  file_url text not null,
+  file_type text not null,
+  user_id uuid references auth.users not null default auth.uid(),
+  created_at timestamp with time zone default now()
+);
+```
+
+#### 보안 정책 (RLS) 설정
+```sql
+-- 테이블 권한: 소유자만 관리 가능
+create policy "Users can insert their own media" on media_files for insert with check (auth.uid() = user_id);
+create policy "Users can select all media" on media_files for select using (true);
+create policy "Users can delete their own media" on media_files for delete using (auth.uid() = user_id);
+
+-- 스토리지 권한: 소유자만 업로드/삭제 가능
+create policy "Allow public select" on storage.objects for select using (bucket_id = 'MediaLink Hub');
+create policy "Allow authenticated upload" on storage.objects for insert to authenticated with check (bucket_id = 'MediaLink Hub');
+create policy "Allow owners to delete" on storage.objects for delete to authenticated using (bucket_id = 'MediaLink Hub');
+```
+
+---
+
+## 🔗 Links
+
+- **프로젝트 상세 정보**: [AK Labs](https://litt.ly/aklabs)
+- **제작**: AK Labs 팀
+
+---
+© 2026 MediaLink Hub. All rights reserved.
