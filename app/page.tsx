@@ -145,23 +145,30 @@ export default function Page() {
           
           if (storageError) {
             console.error('Storage Deletion Error:', storageError);
+            throw new Error(`스토리지 파일 삭제 실패: ${storageError.message}`);
           }
         }
       }
 
-      // DB 레코드 삭제 (관리자면 user_id 체크 없이 삭제 가능하게 match 조정)
+      // DB 레코드 삭제 (삭제된 행의 개수를 확인하기 위해 select().single() 등으로 검증 가능하지만, 
+      // 여기서는 삭제 후 결과 데이터가 있는지 확인하는 방식을 사용합니다.)
       const matchCriteria = isAdmin ? { id } : { id, user_id: user.id };
-      const { error: dbError } = await supabase
+      const { data, error: dbError } = await supabase
         .from('media_files')
         .delete()
-        .match(matchCriteria);
-
+        .match(matchCriteria)
+        .select(); // 삭제된 데이터를 반환받아 실제 삭제 여부 확인
 
       if (dbError) throw dbError;
+      
+      if (!data || data.length === 0) {
+        throw new Error('삭제 권한이 없거나 이미 삭제된 파일입니다. (DB 정책 확인 필요)');
+      }
 
       setItems(items.filter(item => item.id !== id));
       alert('성공적으로 삭제되었습니다.');
     } catch (err: any) {
+
       console.error('Full Deletion Error:', err);
       alert(`삭제 실패: ${err.message || '알 수 없는 오류가 발생했습니다.'}`);
     }
