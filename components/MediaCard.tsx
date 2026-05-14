@@ -26,6 +26,8 @@ export default function MediaCard({ item, onDelete, isOwner = false }: MediaCard
 
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(false);
+
 
   React.useEffect(() => {
     setMounted(true);
@@ -50,8 +52,11 @@ export default function MediaCard({ item, onDelete, isOwner = false }: MediaCard
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="group relative bg-white rounded-3xl border border-zinc-100 overflow-hidden hover:shadow-xl hover:shadow-zinc-200/50 transition-all duration-500"
+      onClick={() => setShowOverlay(!showOverlay)}
+      onMouseLeave={() => setShowOverlay(false)}
+      className="group relative bg-white rounded-3xl border border-zinc-100 overflow-hidden hover:shadow-xl hover:shadow-zinc-200/50 transition-all duration-500 cursor-pointer"
     >
+
       {/* Preview Area */}
       <div className="aspect-video bg-zinc-50 flex items-center justify-center overflow-hidden relative">
         {item.file_type === 'image' ? (
@@ -74,10 +79,15 @@ export default function MediaCard({ item, onDelete, isOwner = false }: MediaCard
         )}
         
         {/* Overlay Actions */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
+        <div 
+          className={`absolute inset-0 bg-black/40 transition-opacity duration-300 flex items-center justify-center gap-3 z-20 ${
+            showOverlay ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
-            onClick={copyToClipboard}
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-zinc-900 hover:scale-110 transition-transform"
+            onClick={(e) => { e.stopPropagation(); copyToClipboard(); }}
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-zinc-900 hover:scale-110 transition-transform shadow-lg"
             title="URL 복사"
           >
             {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
@@ -86,22 +96,23 @@ export default function MediaCard({ item, onDelete, isOwner = false }: MediaCard
             href={item.file_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-zinc-900 hover:scale-110 transition-transform"
+            onClick={(e) => e.stopPropagation()}
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-zinc-900 hover:scale-110 transition-transform shadow-lg"
             title="새 창에서 열기"
           >
             <ExternalLink className="w-5 h-5" />
           </a>
           {isOwner && (
             <button
-              onClick={() => onDelete(item.id)}
-              className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-500 hover:scale-110 transition-transform"
+              onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+              className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-red-500 hover:scale-110 transition-transform shadow-lg"
               title="삭제"
             >
               <Trash2 className="w-5 h-5" />
             </button>
           )}
-
         </div>
+
       </div>
 
       {/* Info Area */}

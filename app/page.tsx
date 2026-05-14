@@ -20,22 +20,63 @@ interface MediaItem {
 export default function Page() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<any>(null); // Supabase User type
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+ // Supabase User type
 
 
-  // 익명 로그인 초기화
+  // 인증 및 관리자 체크
   useEffect(() => {
     const initAuth = async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (!error) setUser(data.user);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setUser(session.user);
+          // 관리자 이메일 체크 (필요시 .env로 관리 가능)
+          if (session.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+            setIsAdmin(true);
+          }
+        } else {
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) throw error;
+          setUser(data.user);
+        }
+      } catch (err) {
+        console.error('Auth Initialization Error:', err);
       }
     };
     initAuth();
   }, []);
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      if (error) throw error;
+      setUser(data.user);
+      if (data.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+        setIsAdmin(true);
+      }
+      setShowLoginModal(false);
+      alert('관리자로 로그인되었습니다.');
+      fetchItems();
+    } catch (err: any) {
+      alert('로그인 실패: ' + err.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.reload();
+  };
+
+
 
 
   const fetchItems = async () => {
@@ -77,33 +118,55 @@ export default function Page() {
   const [rlsError, setRlsError] = useState(false);
 
   const handleDelete = async (id: string) => {
-    if (!user) return;
+    if (!user) {
+      alert('로그인 정보가 없습니다. 새로고침 후 다시 시도해 주세요.');
+      return;
+    }
     
+    if (!window.confirm('정말 이 파일을 삭제하시겠습니까?')) return;
+
     try {
       const itemToDelete = items.find(i => i.id === id);
       if (itemToDelete) {
-        // user_id가 없거나 본인 것이 아니면 삭제 불가 (프론트엔드 방어)
+        // 본인 소유 확인
         if (itemToDelete.user_id && itemToDelete.user_id !== user.id) {
           alert('본인이 업로드한 파일만 삭제할 수 있습니다.');
           return;
         }
 
-
-        const fileName = itemToDelete.file_url.split('/').pop();
+        // 스토리지 파일 삭제
+        const urlParts = itemToDelete.file_url.split('/');
+        const fileName = urlParts[urlParts.length - 1].split('?')[0]; // 쿼리 파라미터 제거
+        
         if (fileName) {
-          await supabase.storage.from('MediaLink Hub').remove([fileName]);
+          const { error: storageError } = await supabase.storage
+            .from('MediaLink Hub')
+            .remove([fileName]);
+          
+          if (storageError) {
+            console.error('Storage Deletion Error:', storageError);
+          }
         }
       }
 
-      const { error } = await supabase.from('media_files').delete().match({ id, user_id: user.id });
-      if (error) throw error;
+      // DB 레코드 삭제 (관리자면 user_id 체크 없이 삭제 가능하게 match 조정)
+      const matchCriteria = isAdmin ? { id } : { id, user_id: user.id };
+      const { error: dbError } = await supabase
+        .from('media_files')
+        .delete()
+        .match(matchCriteria);
+
+
+      if (dbError) throw dbError;
 
       setItems(items.filter(item => item.id !== id));
-    } catch (err) {
-      console.error('Error deleting item:', err);
-      alert('삭제 중 오류가 발생했습니다. 권한이 없거나 이미 삭제된 파일일 수 있습니다.');
+      alert('성공적으로 삭제되었습니다.');
+    } catch (err: any) {
+      console.error('Full Deletion Error:', err);
+      alert(`삭제 실패: ${err.message || '알 수 없는 오류가 발생했습니다.'}`);
     }
   };
+
 
 
   useEffect(() => {
@@ -203,11 +266,29 @@ create policy "Allow owners to delete" on storage.objects for delete to authenti
             transition={{ delay: 0.4 }}
             className="flex items-center gap-4 text-sm font-medium text-zinc-500"
           >
+            {isAdmin ? (
+              <button 
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-full border border-red-100 shadow-sm hover:bg-red-100 transition-colors"
+              >
+                <Globe className="w-4 h-4" />
+                <span>Admin Mode (Logout)</span>
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowLoginModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-zinc-100 shadow-sm hover:bg-zinc-50 transition-colors"
+              >
+                <Sparkles className="w-4 h-4 text-zinc-400" />
+                <span>Admin Login</span>
+              </button>
+            )}
             <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-zinc-100 shadow-sm">
               <Sparkles className="w-4 h-4 text-amber-500" />
               <span>{items.length} Files Hosted</span>
             </div>
           </motion.div>
+
         </div>
       </header>
 
@@ -272,8 +353,10 @@ create policy "Allow owners to delete" on storage.objects for delete to authenti
                     key={item.id} 
                     item={item} 
                     onDelete={handleDelete} 
-                    isOwner={user?.id === item.user_id}
+                    isOwner={isAdmin || Boolean(user && item.user_id && user.id === item.user_id)}
                   />
+
+
 
                 ))
 
@@ -287,7 +370,62 @@ create policy "Allow owners to delete" on storage.objects for delete to authenti
         </div>
       </div>
 
+      {/* Admin Login Modal */}
+      <AnimatePresence>
+        {showLoginModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-md bg-white rounded-[2rem] p-10 shadow-2xl border border-zinc-100"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-2xl font-bold tracking-tight">Admin Portal</h2>
+                <button 
+                  onClick={() => setShowLoginModal(false)}
+                  className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500 hover:bg-zinc-200"
+                >
+                  ✕
+                </button>
+              </div>
+              <form onSubmit={handleAdminLogin} className="space-y-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Email Address</label>
+                  <input 
+                    type="email" 
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    className="w-full px-5 py-4 bg-zinc-50 border border-zinc-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
+                    placeholder="admin@medialink.hub"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Master Password</label>
+                  <input 
+                    type="password" 
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full px-5 py-4 bg-zinc-50 border border-zinc-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all shadow-lg"
+                >
+                  Authorize Access
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Footer */}
+
       <footer className="max-w-7xl mx-auto px-6 py-12 border-t border-zinc-200 flex flex-col md:flex-row justify-between items-center gap-6">
         <p className="text-xs text-zinc-400 font-medium">© 2026 MediaLink Hub. All rights reserved.</p>
         <div className="flex gap-8">
