@@ -42,6 +42,12 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
       const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
+      // 현재 로그인된 사용자(익명 또는 로그인 사용자) 정보 조회
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('로그인 세션이 존재하지 않습니다. 새로고침 후 다시 시도해 주세요.');
+      }
+
       // 1. Upload to Supabase Storage (Bucket: MediaLink Hub)
       const { error: uploadError } = await supabase.storage
         .from('MediaLink Hub')
@@ -62,6 +68,7 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
             file_name: file.name,
             file_url: publicUrl,
             file_type: file.type.split('/')[0], // image, video, audio
+            user_id: user.id, // 유저 ID 명시적 전달 (RLS 검증 통과용)
           },
         ]);
 

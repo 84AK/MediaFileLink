@@ -64,10 +64,10 @@ create policy "Users can insert their own media" on media_files for insert with 
 create policy "Users can select all media" on media_files for select using (true);
 create policy "Users can delete their own media" on media_files for delete using (auth.uid() = user_id);
 
--- 스토리지 권한: 소유자만 업로드/삭제 가능
+-- 스토리지 권한: 누구나 업로드 가능 및 소유자/관리자 삭제 가능
 create policy "Allow public select" on storage.objects for select using (bucket_id = 'MediaLink Hub');
-create policy "Allow authenticated upload" on storage.objects for insert to authenticated with check (bucket_id = 'MediaLink Hub');
-create policy "Allow owners to delete" on storage.objects for delete to authenticated using (bucket_id = 'MediaLink Hub');
+create policy "Allow upload for all" on storage.objects for insert with check (bucket_id = 'MediaLink Hub');
+create policy "Allow delete for owners and admin" on storage.objects for delete using (bucket_id = 'MediaLink Hub' and (auth.uid() = owner or auth.jwt() ->> 'email' = 'mosebb@gmail.com'));
 ```
 
 ---
