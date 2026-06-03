@@ -229,14 +229,25 @@ export default function Page() {
               데이터를 저장할 권한이 없습니다. SQL Editor에서 아래 명령어를 실행하여 정책을 추가해 주세요.
             </p>
             <pre className="bg-zinc-900 text-zinc-400 p-4 rounded-xl text-xs overflow-x-auto font-mono">
-{`-- 테이블 권한: 소유자만 관리 가능
-create policy "Users can insert their own media" on media_files for insert with check (auth.uid() = user_id);
-create policy "Users can select all media" on media_files for select using (true);
-create policy "Users can delete their own media" on media_files for delete using (auth.uid() = user_id);
+{`-- 1. media_files 테이블에 user_id 컬럼 추가 (기존에 없는 경우에만 추가)
+ALTER TABLE media_files ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users DEFAULT auth.uid();
 
--- 스토리지 권한: 누구나 업로드 가능 및 소유자/관리자 삭제 가능
+-- 2. media_files 테이블 RLS 활성화
+ALTER TABLE media_files ENABLE ROW LEVEL SECURITY;
+
+-- 3. media_files 테이블 RLS 정책 생성
+-- 3-1. INSERT 정책 (익명 및 로그인 사용자 모두 본인 파일 추가 가능)
+create policy "Users can insert their own media" on media_files for insert to anon, authenticated with check (auth.uid() = user_id);
+
+-- 3-2. SELECT 정책 (누구나 파일 목록 조회 가능)
+create policy "Users can select all media" on media_files for select using (true);
+
+-- 3-3. DELETE 정책 (파일 업로더 및 관리자 mosebb@gmail.com 만 삭제 가능)
+create policy "Users can delete their own media" on media_files for delete to anon, authenticated using (auth.uid() = user_id or auth.jwt() ->> 'email' = 'mosebb@gmail.com');
+
+-- 4. 스토리지 권한: 누구나 업로드 가능 및 소유자/관리자 삭제 가능
 create policy "Allow public select" on storage.objects for select using (bucket_id = 'MediaLink Hub');
-create policy "Allow upload for all" on storage.objects for insert with check (bucket_id = 'MediaLink Hub');
+create policy "Allow upload for all" on storage.objects for insert to anon, authenticated with check (bucket_id = 'MediaLink Hub');
 create policy "Allow delete for owners and admin" on storage.objects for delete using (bucket_id = 'MediaLink Hub' and (auth.uid() = owner or auth.jwt() ->> 'email' = 'mosebb@gmail.com'));`}
 
             </pre>
