@@ -49,14 +49,48 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
         throw new Error('로그인 세션이 존재하지 않습니다. 새로고침 후 다시 시도해 주세요.');
       }
 
+      const isAnonymous = user.is_anonymous || !user.email;
+      const isAdmin = user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+
+      // 1. 한국 시간(KST) 오늘 자정 구하기 (UTC+9)
+      const kstDate = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+      const y = kstDate.getUTCFullYear();
+      const m = String(kstDate.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(kstDate.getUTCDate()).padStart(2, '0');
+      const kstMidnightIso = `${y}-${m}-${d}T00:00:00+09:00`;
+
+      // 2. DB에서 현재 유저가 오늘 업로드한 개수 카운팅
+      const { count, error: countError } = await supabase
+        .from('media_files')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', kstMidnightIso);
+
+      if (countError) {
+        console.error('Failed to check upload limit count:', countError);
+        throw new Error('업로드 제한 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+
+      const dailyLimit = isAdmin ? Infinity : isAnonymous ? 3 : 10;
+      const currentUploads = count || 0;
+      const attemptCount = fileArray.length;
+
+      if (currentUploads + attemptCount > dailyLimit) {
+        if (isAnonymous) {
+          throw new Error(`오늘 업로드 한도(최대 3개)를 초과했습니다. (오늘 이미 ${currentUploads}개 업로드함)\n구글 소셜 로그인 시 하루 최대 10개까지 업로드 가능합니다.`);
+        } else if (!isAdmin) {
+          throw new Error(`오늘 업로드 한도(최대 10개)를 초과했습니다. (오늘 이미 ${currentUploads}개 업로드함)`);
+        }
+      }
+
       // 만료 일시 산출 (익명 1일, 일반 로그인 7일, 관리자 영구)
       let expiresAt: string | null = null;
-      if (user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+      if (isAdmin) {
         expiresAt = null;
-      } else if (user.email) {
-        expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      } else {
+      } else if (isAnonymous) {
         expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       }
 
       // 순차 업로드 실행 (렉 방지 및 모바일 기기 메모리 보호)
@@ -191,7 +225,7 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
         <div>
           <h4 className="text-sm font-bold text-zinc-800">미디어 자동 보존 정책 안내</h4>
           <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-            비로그인 업로드 시 <strong>24시간(1일)</strong> 보존 후 자동 삭제되며, 구글 소셜 로그인 유저는 <strong>7일(일주일)</strong>, 관리자 계정은 만료 기한 없이 <strong>영구 보존</strong>됩니다.
+            비로그인 업로드 시 하루 최대 <strong>3개</strong>, <strong>24시간(1일)</strong> 보존 후 자동 삭제되며, 구글 소셜 로그인 유저는 하루 최대 <strong>10개</strong>, <strong>7일(일주일)</strong> 보존됩니다. 관리자 계정은 제한 없이 <strong>영구 보존</strong>됩니다.
           </p>
         </div>
       </div>
