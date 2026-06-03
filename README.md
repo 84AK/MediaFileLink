@@ -88,6 +88,16 @@ create policy "Allow delete for owners and admin" on storage.objects for delete 
 
 ---
 
+### 🔑 5. 구글 소셜 로그인 (Google OAuth) 설정
+일반 사용자의 보존 기간(7일) 적용을 위해 구글 로그인을 활성화합니다.
+1. **Google Cloud Console**에서 Web OAuth Client ID와 Client Secret을 발급받습니다.
+   - Authorized redirect URIs에 `https://<your-supabase-project-id>.supabase.co/auth/v1/callback`을 등록합니다.
+2. **Supabase Dashboard** -> Authentication -> Providers -> **Google** 로 이동하여 아래 설정을 채웁니다.
+   - Client ID 및 Client Secret 입력 후 저장.
+   - `Redirect URL`이 올바르게 매칭되어 있는지 검증합니다.
+
+---
+
 ## 🔗 Links
 
 - **프로젝트 상세 정보**: [AK Labs](https://litt.ly/aklabs)

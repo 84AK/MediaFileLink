@@ -29,18 +29,19 @@ export default function Page() {
  // Supabase User type
 
 
-  // 인증 및 관리자 체크
+  // 인증 및 관리자/소셜 로그인 체크
   useEffect(() => {
+    // 1. 초기 세션 복구 및 체크
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setUser(session.user);
-          // 관리자 이메일 체크 (필요시 .env로 관리 가능)
           if (session.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
             setIsAdmin(true);
           }
         } else {
+          // 세션이 없으면 백그라운드 익명 로그인 유지
           const { data, error } = await supabase.auth.signInAnonymously();
           if (error) throw error;
           setUser(data.user);
@@ -49,8 +50,51 @@ export default function Page() {
         console.error('Auth Initialization Error:', err);
       }
     };
+
     initAuth();
+
+    // 2. 인증 상태 실시간 구독 (구글 소셜 로그인 완료 감지 등)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        if (session.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+        }
+      } else {
+        // 로그아웃 시 다시 익명 계정으로 복구
+        setIsAdmin(false);
+        try {
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (!error && data?.user) {
+            setUser(data.user);
+          }
+        } catch (e) {
+          console.error('Auto Anonymous Login Failed on Signout:', e);
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
+
+  // 구글 소셜 로그인 트리거
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      alert('구글 로그인 실패: ' + err.message);
+    }
+  };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -284,26 +328,47 @@ create policy "Allow delete for owners and admin" on storage.objects for delete 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="flex items-center gap-4 text-sm font-medium text-zinc-500"
+            className="flex items-center gap-3 text-sm font-medium text-zinc-500 flex-wrap"
           >
-            {isAdmin ? (
-              <button 
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-full border border-red-100 shadow-sm hover:bg-red-100 transition-colors"
-              >
-                <Globe className="w-4 h-4" />
-                <span>Admin Mode (Logout)</span>
-              </button>
+            {!user || user.is_anonymous ? (
+              <>
+                {/* Google OAuth Login */}
+                <button 
+                  onClick={handleGoogleLogin}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-zinc-700 rounded-full border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 transition-all shadow-sm font-semibold text-xs"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582l3.51-3.51C17.842 1.05 15.11 0 12 0 7.34 0 3.32 2.67 1.34 6.57l3.926 3.195z" />
+                    <path fill="#4285F4" d="M23.455 12.273c0-.818-.073-1.609-.209-2.386H12v4.518h6.427a5.53 5.53 0 0 1-2.4 3.632l3.736 2.9C21.945 19.123 23.455 16.014 23.455 12.273z" />
+                    <path fill="#FBBC05" d="M5.266 14.235A7.014 7.014 0 0 1 4.909 12c0-.782.132-1.532.357-2.235L1.34 6.57A11.97 11.97 0 0 0 0 12c0 1.95.468 3.79 1.3 5.43l3.966-3.195z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.97-1.07 7.96-2.91l-3.736-2.9C15.11 19.064 13.68 19.09 12 19.09c-2.86 0-5.29-1.93-6.16-4.53H1.87v3.195C3.85 21.33 7.86 24 12 24z" />
+                  </svg>
+                  <span>Google 로그인</span>
+                </button>
+
+                <button 
+                  onClick={() => setShowLoginModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-full border border-zinc-200 shadow-sm hover:bg-zinc-50 transition-colors text-xs font-semibold text-zinc-600"
+                >
+                  <Sparkles className="w-4 h-4 text-zinc-400" />
+                  <span>Admin Login</span>
+                </button>
+              </>
             ) : (
-              <button 
-                onClick={() => setShowLoginModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-zinc-100 shadow-sm hover:bg-zinc-50 transition-colors"
-              >
-                <Sparkles className="w-4 h-4 text-zinc-400" />
-                <span>Admin Login</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <span className="text-zinc-600 text-xs font-semibold px-4 py-2 bg-white border border-zinc-100 rounded-full shadow-sm max-w-[220px] truncate" title={user.email}>
+                  👤 {user.email}
+                </span>
+                <button 
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-full border border-red-100 shadow-sm hover:bg-red-100 transition-colors text-xs font-semibold"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>{isAdmin ? 'Admin Mode (Logout)' : '로그아웃'}</span>
+                </button>
+              </div>
             )}
-            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-zinc-100 shadow-sm">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-white rounded-full border border-zinc-100 shadow-sm text-xs font-semibold">
               <Sparkles className="w-4 h-4 text-amber-500" />
               <span>{items.length} Files Hosted</span>
             </div>

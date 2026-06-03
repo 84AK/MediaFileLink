@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Upload, File, Loader2 } from 'lucide-react';
+import { Upload, File, Loader2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { convertToWebP } from '@/lib/utils';
@@ -173,10 +173,16 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
       </div>
       
       {/* Retention Guide Banner */}
-      <div className="px-4 py-1.5 bg-zinc-100/50 rounded-2xl border border-zinc-200/40 text-center">
-        <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
-          💡 <b>보존 정책:</b> 로그인 없이 업로드 시 <b>24시간(1일)</b> 보존 후 자동 삭제되며, 일반 로그인은 <b>7일</b>, 관리자는 <b>영구 보존</b>됩니다.
-        </p>
+      <div className="p-5 bg-zinc-900/5 rounded-3xl border border-zinc-200/60 flex items-start gap-4 text-left shadow-sm">
+        <div className="w-10 h-10 rounded-2xl bg-zinc-900 text-white flex items-center justify-center shrink-0">
+          <Clock className="w-5 h-5" />
+        </div>
+        <div>
+          <h4 className="text-sm font-bold text-zinc-800">미디어 자동 보존 정책 안내</h4>
+          <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+            비로그인 업로드 시 <strong>24시간(1일)</strong> 보존 후 자동 삭제되며, 구글 소셜 로그인 유저는 <strong>7일(일주일)</strong>, 관리자 계정은 만료 기한 없이 <strong>영구 보존</strong>됩니다.
+          </p>
+        </div>
       </div>
     </div>
   );
