@@ -21,10 +21,17 @@ interface MediaCardProps {
   item: MediaItem;
   onDelete: (id: string) => void;
   isOwner?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-export default function MediaCard({ item, onDelete, isOwner = false }: MediaCardProps) {
-
+export default function MediaCard({
+  item,
+  onDelete,
+  isOwner = false,
+  isSelected = false,
+  onToggleSelect,
+}: MediaCardProps) {
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -55,11 +62,26 @@ export default function MediaCard({ item, onDelete, isOwner = false }: MediaCard
       animate={{ opacity: 1, scale: 1 }}
       onClick={() => setShowOverlay(!showOverlay)}
       onMouseLeave={() => setShowOverlay(false)}
-      className="group relative bg-white rounded-3xl border border-zinc-100 overflow-hidden hover:shadow-xl hover:shadow-zinc-200/50 transition-all duration-500 cursor-pointer"
+      className={`group relative bg-white rounded-3xl border overflow-hidden hover:shadow-xl hover:shadow-zinc-200/50 transition-all duration-500 cursor-pointer ${
+        isSelected ? 'border-zinc-900 ring-2 ring-zinc-900/10' : 'border-zinc-100'
+      }`}
     >
 
       {/* Preview Area */}
       <div className="aspect-video bg-zinc-50 flex items-center justify-center overflow-hidden relative">
+        {/* Checkbox Overlay */}
+        {onToggleSelect && (
+          <div 
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(item.id); }}
+            className={`absolute top-4 left-4 z-30 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+              isSelected 
+                ? 'bg-zinc-900 border-zinc-900 text-white scale-110 shadow-md' 
+                : 'bg-white/70 backdrop-blur-sm border-zinc-300 opacity-0 group-hover:opacity-100'
+            }`}
+          >
+            {isSelected && <span className="text-[10px] font-bold">✓</span>}
+          </div>
+        )}
         {item.file_type === 'image' ? (
           <div className="relative w-full h-full">
             <Image

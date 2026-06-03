@@ -26,7 +26,109 @@ export default function Page() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
- // Supabase User type
+
+  // 필터 및 다중 선택 상태 추가
+  const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 필터링된 이미지 목록 산출
+  const displayedItems = filterMode === 'mine' && user && !user.is_anonymous
+    ? items.filter(item => item.user_id === user.id)
+    : items;
+
+  // 개별 선택 토글 핸들러
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // 전체 선택 / 전체 선택 해제 핸들러
+  const handleSelectAll = () => {
+    if (selectedIds.size === displayedItems.length && displayedItems.length > 0) {
+      setSelectedIds(new Set()); // 전체 해제
+    } else {
+      setSelectedIds(new Set(displayedItems.map(item => item.id))); // 전체 선택
+    }
+  };
+
+  // 벌크 일괄 삭제 핸들러 (최적화)
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!user) {
+      alert('로그인 정보가 존재하지 않습니다.');
+      return;
+    }
+
+    const targetIds = Array.from(selectedIds);
+    const targetItems = items.filter(item => targetIds.includes(item.id));
+
+    // 권한 검증: 관리자면 전체 삭제, 일반 유저면 본인 파일만 선별
+    const deletableItems = isAdmin
+      ? targetItems
+      : targetItems.filter(item => item.user_id === user.id);
+
+    if (deletableItems.length === 0) {
+      alert('삭제할 수 있는 본인 소유의 파일이 선택되지 않았습니다.');
+      return;
+    }
+
+    if (!window.confirm(`선택한 ${deletableItems.length}개의 파일을 일괄 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // 1. 스토리지 파일들 일괄 삭제 (MIME 확장자 복구)
+      const fileNames = deletableItems
+        .map(item => {
+          try {
+            const urlParts = item.file_url.split('/');
+            return decodeURIComponent(urlParts[urlParts.length - 1].split('?')[0]);
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter((name): name is string => Boolean(name));
+
+      if (fileNames.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from('MediaLink Hub')
+          .remove(fileNames);
+
+        if (storageError) {
+          console.error('Storage Bulk Delete Error:', storageError);
+          throw new Error(`스토리지 파일 물리 삭제 실패: ${storageError.message}`);
+        }
+      }
+
+      // 2. DB 레코드 일괄 삭제
+      const deletableIds = deletableItems.map(item => item.id);
+      const { error: dbError } = await supabase
+        .from('media_files')
+        .delete()
+        .in('id', deletableIds);
+
+      if (dbError) throw dbError;
+
+      // 3. UI 상태 동기화
+      setItems(prev => prev.filter(item => !deletableIds.includes(item.id)));
+      setSelectedIds(new Set()); // 선택 클리어
+      alert(`${deletableIds.length}개의 파일이 성공적으로 삭제되었습니다.`);
+    } catch (err: any) {
+      console.error('Bulk Delete Transaction Error:', err);
+      alert(`일괄 삭제 실패: ${err.message || '오류가 발생했습니다.'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
 
   // 인증 및 관리자/소셜 로그인 체크
@@ -425,6 +527,61 @@ create policy "Allow delete for owners and admin" on storage.objects for delete 
             <p className="text-xs text-zinc-400 font-medium uppercase tracking-widest">History Management</p>
           </div>
 
+          {/* Bento Controls Bar */}
+          <div className="md:col-span-12 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-white border border-zinc-200/60 rounded-[2rem] p-5 shadow-sm">
+            {/* Left: filter tabs */}
+            <div className="flex items-center gap-1.5 bg-zinc-100 p-1.5 rounded-2xl self-start sm:self-auto">
+              <button
+                onClick={() => { setFilterMode('all'); setSelectedIds(new Set()); }}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+                  filterMode === 'all' 
+                    ? 'bg-white text-zinc-950 shadow-sm' 
+                    : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                모든 미디어
+              </button>
+              {user && !user.is_anonymous && (
+                <button
+                  onClick={() => { setFilterMode('mine'); setSelectedIds(new Set()); }}
+                  className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+                    filterMode === 'mine' 
+                      ? 'bg-white text-zinc-950 shadow-sm' 
+                      : 'text-zinc-500 hover:text-zinc-800'
+                  }`}
+                >
+                  내가 올린 미디어
+                </button>
+              )}
+            </div>
+
+            {/* Right: bulk actions */}
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={handleSelectAll}
+                className="px-4 py-2.5 text-xs font-bold bg-white border border-zinc-200 text-zinc-700 rounded-xl hover:bg-zinc-50 transition-all shadow-sm"
+              >
+                {selectedIds.size === displayedItems.length && displayedItems.length > 0 
+                  ? '선택 해제' 
+                  : '전체 선택'}
+              </button>
+              
+              <AnimatePresence>
+                {selectedIds.size > 0 && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.9, x: 20 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, x: 20 }}
+                    onClick={handleBulkDelete}
+                    className="px-4 py-2.5 text-xs font-bold bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all shadow-md flex items-center gap-1.5"
+                  >
+                    <span>선택 삭제 ({selectedIds.size})</span>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
           {/* Media Grid */}
           <div className="md:col-span-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <AnimatePresence mode="popLayout">
@@ -432,17 +589,16 @@ create policy "Allow delete for owners and admin" on storage.objects for delete 
                 Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="aspect-video bg-zinc-200 animate-pulse rounded-3xl" />
                 ))
-              ) : items.length > 0 ? (
-                items.map((item) => (
+              ) : displayedItems.length > 0 ? (
+                displayedItems.map((item) => (
                   <MediaCard 
                     key={item.id} 
                     item={item} 
                     onDelete={handleDelete} 
                     isOwner={isAdmin || Boolean(user && item.user_id && user.id === item.user_id)}
+                    isSelected={selectedIds.has(item.id)}
+                    onToggleSelect={handleToggleSelect}
                   />
-
-
-
                 ))
 
               ) : (
