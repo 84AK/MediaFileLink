@@ -44,7 +44,17 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
 
     try {
       // 현재 로그인된 사용자 정보 조회
-      const { data: { user } } = await supabase.auth.getUser();
+      let { data: { user } } = await supabase.auth.getUser();
+
+      // 세션이 없으면 즉시 백그라운드 익명 로그인 재시도
+      if (!user) {
+        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) {
+          throw new Error('익명 로그인 세션을 생성할 수 없습니다. Supabase 대시보드에서 Anonymous Sign-ins 활성화 여부를 확인해 주세요.');
+        }
+        user = anonData.user;
+      }
+
       if (!user) {
         throw new Error('로그인 세션이 존재하지 않습니다. 새로고침 후 다시 시도해 주세요.');
       }
