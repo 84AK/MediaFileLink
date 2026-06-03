@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { Upload, File, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
+import { convertToWebP } from '@/lib/utils';
 
 interface UploadZoneProps {
   onUploadComplete: () => void;
@@ -38,7 +39,10 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
 
 
     try {
-      const fileExt = file.name.split('.').pop();
+      // 업로드 전 이미지 파일인 경우 WebP로 자동 변환 및 최적화 진행
+      const processedFile = await convertToWebP(file);
+
+      const fileExt = processedFile.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
@@ -51,7 +55,7 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
       // 1. Upload to Supabase Storage (Bucket: MediaLink Hub)
       const { error: uploadError } = await supabase.storage
         .from('MediaLink Hub')
-        .upload(filePath, file);
+        .upload(filePath, processedFile);
 
       if (uploadError) throw uploadError;
 
@@ -65,9 +69,9 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
         .from('media_files')
         .insert([
           {
-            file_name: file.name,
+            file_name: processedFile.name,
             file_url: publicUrl,
-            file_type: file.type.split('/')[0], // image, video, audio
+            file_type: processedFile.type.split('/')[0], // image, video, audio
             user_id: user.id, // 유저 ID 명시적 전달 (RLS 검증 통과용)
           },
         ]);
