@@ -13,56 +13,41 @@ interface UploadZoneProps {
 export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
 
-  const handleUpload = useCallback(async (file: File) => {
-    if (!file) return;
+  const handleUploads = useCallback(async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
 
+    const fileArray = Array.from(files);
     setIsUploading(true);
+    setUploadProgress({ current: 0, total: fileArray.length });
     setError(null);
 
-    // 보안 검증: 파일 크기 제한 (10MB)
+    // 1차 보안 검증: 모든 파일 크기 및 포맷 체크
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-    if (file.size > MAX_FILE_SIZE) {
-      setError('파일 크기가 너무 큽니다. (최대 10MB)');
-      setIsUploading(false);
-      return;
-    }
-
-    // 보안 검증: 미디어 파일 형식만 허용
     const allowedTypes = ['image/', 'video/', 'audio/'];
-    if (!allowedTypes.some(type => file.type.startsWith(type))) {
-      setError('이미지, 비디오, 오디오 파일만 업로드 가능합니다.');
-      setIsUploading(false);
-      return;
-    }
 
+    for (const file of fileArray) {
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`'${file.name}' 파일 크기가 너무 큽니다. (최대 10MB)`);
+        setIsUploading(false);
+        return;
+      }
+
+      if (!allowedTypes.some(type => file.type.startsWith(type))) {
+        setError(`'${file.name}'은 지원하지 않는 파일 형식입니다. (이미지, 비디오, 오디오만 가능)`);
+        setIsUploading(false);
+        return;
+      }
+    }
 
     try {
-      // 업로드 전 이미지 파일인 경우 WebP로 자동 변환 및 최적화 진행
-      const processedFile = await convertToWebP(file);
-
-      const fileExt = processedFile.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      // 현재 로그인된 사용자(익명 또는 로그인 사용자) 정보 조회
+      // 현재 로그인된 사용자 정보 조회
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('로그인 세션이 존재하지 않습니다. 새로고침 후 다시 시도해 주세요.');
       }
-
-      // 1. Upload to Supabase Storage (Bucket: MediaLink Hub)
-      const { error: uploadError } = await supabase.storage
-        .from('MediaLink Hub')
-        .upload(filePath, processedFile);
-
-      if (uploadError) throw uploadError;
-
-      // 2. Get Public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('MediaLink Hub')
-        .getPublicUrl(filePath);
 
       // 만료 일시 산출 (익명 1일, 일반 로그인 7일, 관리자 영구)
       let expiresAt: string | null = null;
@@ -74,30 +59,53 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
         expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       }
 
-      // 3. Save to Database (Table: media_files)
-      const { error: dbError } = await supabase
-        .from('media_files')
-        .insert([
-          {
-            file_name: processedFile.name,
-            file_url: publicUrl,
-            file_type: processedFile.type.split('/')[0], // image, video, audio
-            user_id: user.id, // 유저 ID 명시적 전달 (RLS 검증 통과용)
-            expires_at: expiresAt,
-          },
-        ]);
+      // 순차 업로드 실행 (렉 방지 및 모바일 기기 메모리 보호)
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        setUploadProgress(prev => ({ ...prev, current: i + 1 }));
 
-      if (dbError) throw dbError;
+        // 1. WebP 변환 및 최적화 (비디오/오디오/SVG 등은 자동 예외 처리됨)
+        const processedFile = await convertToWebP(file);
+
+        const fileExt = processedFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        // 2. Storage 업로드
+        const { error: uploadError } = await supabase.storage
+          .from('MediaLink Hub')
+          .upload(filePath, processedFile);
+
+        if (uploadError) throw uploadError;
+
+        // 3. Get Public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('MediaLink Hub')
+          .getPublicUrl(filePath);
+
+        // 4. Save to Database
+        const { error: dbError } = await supabase
+          .from('media_files')
+          .insert([
+            {
+              file_name: processedFile.name,
+              file_url: publicUrl,
+              file_type: processedFile.type.split('/')[0], // image, video, audio
+              user_id: user.id, // RLS 검증용
+              expires_at: expiresAt,
+            },
+          ]);
+
+        if (dbError) throw dbError;
+      }
 
       onUploadComplete();
     } catch (err: any) {
       console.error('Upload error:', err);
       let msg = err.message || '업로드 중 오류가 발생했습니다.';
-      
       if (msg === 'Failed to fetch') {
         msg = 'Supabase 서버에 연결할 수 없습니다. Settings > Secrets에 URL과 Anon Key가 올바르게 설정되어 있는지 확인해 주세요.';
       }
-      
       setError(msg);
     } finally {
       setIsUploading(false);
@@ -107,13 +115,13 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleUpload(file);
-  }, [handleUpload]);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) handleUploads(files);
+  }, [handleUploads]);
 
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleUpload(file);
+    const files = e.target.files;
+    if (files && files.length > 0) handleUploads(files);
   };
 
   return (
@@ -136,7 +144,9 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
               className="flex flex-col items-center gap-4"
             >
               <Loader2 className="w-12 h-12 text-zinc-400 animate-spin" />
-              <p className="text-sm font-medium text-zinc-500">미디어를 처리 중입니다...</p>
+              <p className="text-sm font-medium text-zinc-500">
+                미디어를 처리 중입니다... ({uploadProgress.current} / {uploadProgress.total})
+              </p>
             </motion.div>
           ) : (
             <motion.div
@@ -151,7 +161,7 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
               </div>
               <div>
                 <p className="text-lg font-semibold text-zinc-800">미디어 업로드</p>
-                <p className="text-sm text-zinc-500 mt-1">파일을 드래그하거나 클릭하여 선택하세요</p>
+                <p className="text-sm text-zinc-500 mt-1">파일들을 드래그하거나 클릭하여 다중 선택하세요</p>
               </div>
             </motion.div>
           )}
@@ -159,6 +169,7 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
 
         <input
           type="file"
+          multiple
           accept="image/*,video/*,audio/*"
           className="absolute inset-0 opacity-0 cursor-pointer z-10"
           onChange={onFileSelect}
