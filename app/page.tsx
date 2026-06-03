@@ -13,6 +13,7 @@ interface MediaItem {
   file_url: string;
   file_type: string;
   user_id?: string;
+  expires_at?: string;
   created_at: string;
 }
 
@@ -229,8 +230,9 @@ export default function Page() {
               데이터를 저장할 권한이 없습니다. SQL Editor에서 아래 명령어를 실행하여 정책을 추가해 주세요.
             </p>
             <pre className="bg-zinc-900 text-zinc-400 p-4 rounded-xl text-xs overflow-x-auto font-mono">
-{`-- 1. media_files 테이블에 user_id 컬럼 추가 (기존에 없는 경우에만 추가)
+{`-- 1. media_files 테이블에 컬럼 추가 (기존에 없는 경우에만 추가)
 ALTER TABLE media_files ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users DEFAULT auth.uid();
+ALTER TABLE media_files ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE;
 
 -- 2. media_files 테이블 RLS 활성화
 ALTER TABLE media_files ENABLE ROW LEVEL SECURITY;

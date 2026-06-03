@@ -12,6 +12,7 @@ interface MediaItem {
   file_url: string;
   file_type: string;
   user_id?: string;
+  expires_at?: string;
   created_at: string;
 }
 
@@ -127,9 +128,22 @@ export default function MediaCard({ item, onDelete, isOwner = false }: MediaCard
           <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-bold">
             {mounted ? new Date(item.created_at).toLocaleDateString() : '로딩 중...'}
           </p>
-          {isOwner && (
-            <span className="text-[9px] bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">My File</span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {mounted && (
+              item.expires_at ? (
+                <span className="text-[8px] bg-amber-50 text-amber-600 border border-amber-100/50 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter" title={`만료 시간: ${new Date(item.expires_at).toLocaleString()}`}>
+                  만료: {new Date(item.expires_at).toLocaleDateString()}
+                </span>
+              ) : (
+                <span className="text-[8px] bg-green-50 text-green-600 border border-green-100/50 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">
+                  영구 보존
+                </span>
+              )
+            )}
+            {isOwner && (
+              <span className="text-[8px] bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">My File</span>
+            )}
+          </div>
         </div>
 
       </div>

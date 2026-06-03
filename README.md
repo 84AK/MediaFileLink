@@ -40,6 +40,9 @@ npm install
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+NEXT_PUBLIC_ADMIN_EMAIL=mosebb@gmail.com
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key # 백엔드 크론 만료 삭제용 마스터키
+CRON_SECRET=your_cron_secret_token             # 만료 삭제 API 보안인증용 토큰
 ```
 
 ### 4. 데이터베이스 설정 (SQL Editor)
@@ -53,14 +56,16 @@ create table media_files (
   file_url text not null,
   file_type text not null,
   user_id uuid references auth.users not null default auth.uid(),
+  expires_at timestamp with time zone,
   created_at timestamp with time zone default now()
 );
 ```
 
-#### 보안 정책 (RLS) 설정
+#### 보안 정책 (RLS) 및 스키마 업데이트
 ```sql
--- 1. media_files 테이블에 user_id 컬럼 추가 (기존에 없는 경우에만 추가)
+-- 1. media_files 테이블에 컬럼 추가 (기존에 없는 경우에만 추가)
 ALTER TABLE media_files ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users DEFAULT auth.uid();
+ALTER TABLE media_files ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE;
 
 -- 2. media_files 테이블 RLS 활성화
 ALTER TABLE media_files ENABLE ROW LEVEL SECURITY;

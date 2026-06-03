@@ -64,6 +64,16 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
         .from('MediaLink Hub')
         .getPublicUrl(filePath);
 
+      // 만료 일시 산출 (익명 1일, 일반 로그인 7일, 관리자 영구)
+      let expiresAt: string | null = null;
+      if (user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+        expiresAt = null;
+      } else if (user.email) {
+        expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      }
+
       // 3. Save to Database (Table: media_files)
       const { error: dbError } = await supabase
         .from('media_files')
@@ -73,6 +83,7 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
             file_url: publicUrl,
             file_type: processedFile.type.split('/')[0], // image, video, audio
             user_id: user.id, // 유저 ID 명시적 전달 (RLS 검증 통과용)
+            expires_at: expiresAt,
           },
         ]);
 
@@ -106,59 +117,67 @@ export default function UploadZone({ onUploadComplete }: UploadZoneProps) {
   };
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={onDrop}
-      className={`relative group cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed transition-all duration-300 h-full min-h-[200px] flex flex-col items-center justify-center p-8 ${
-        isDragging ? 'border-primary bg-primary/5' : 'border-zinc-200 hover:border-zinc-400 bg-white/50 backdrop-blur-sm'
-      }`}
-    >
-      <AnimatePresence mode="wait">
-        {isUploading ? (
-          <motion.div
-            key="uploading"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="flex flex-col items-center gap-4"
-          >
-            <Loader2 className="w-12 h-12 text-zinc-400 animate-spin" />
-            <p className="text-sm font-medium text-zinc-500">미디어를 처리 중입니다...</p>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="idle"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="flex flex-col items-center gap-4 text-center"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-zinc-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-              <Upload className="w-8 h-8 text-zinc-600" />
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-zinc-800">미디어 업로드</p>
-              <p className="text-sm text-zinc-500 mt-1">파일을 드래그하거나 클릭하여 선택하세요</p>
-            </div>
-          </motion.div>
+    <div className="flex flex-col gap-3 h-full">
+      <div
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={onDrop}
+        className={`relative group cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed transition-all duration-300 h-full min-h-[200px] flex flex-col items-center justify-center p-8 ${
+          isDragging ? 'border-primary bg-primary/5' : 'border-zinc-200 hover:border-zinc-400 bg-white/50 backdrop-blur-sm'
+        }`}
+      >
+        <AnimatePresence mode="wait">
+          {isUploading ? (
+            <motion.div
+              key="uploading"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="flex flex-col items-center gap-4"
+            >
+              <Loader2 className="w-12 h-12 text-zinc-400 animate-spin" />
+              <p className="text-sm font-medium text-zinc-500">미디어를 처리 중입니다...</p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="idle"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex flex-col items-center gap-4 text-center"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-zinc-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <Upload className="w-8 h-8 text-zinc-600" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-zinc-800">미디어 업로드</p>
+                <p className="text-sm text-zinc-500 mt-1">파일을 드래그하거나 클릭하여 선택하세요</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <input
+          type="file"
+          accept="image/*,video/*,audio/*"
+          className="absolute inset-0 opacity-0 cursor-pointer z-10"
+          onChange={onFileSelect}
+          disabled={isUploading}
+        />
+
+        {error && (
+          <div className="absolute bottom-4 left-4 right-4 p-2 bg-red-50 text-red-500 text-xs rounded-lg text-center">
+            {error}
+          </div>
         )}
-      </AnimatePresence>
-
-      <input
-        type="file"
-        accept="image/*,video/*,audio/*"
-        className="absolute inset-0 opacity-0 cursor-pointer z-10"
-        onChange={onFileSelect}
-        disabled={isUploading}
-      />
-
-
-      {error && (
-        <div className="absolute bottom-4 left-4 right-4 p-2 bg-red-50 text-red-500 text-xs rounded-lg text-center">
-          {error}
-        </div>
-      )}
+      </div>
+      
+      {/* Retention Guide Banner */}
+      <div className="px-4 py-1.5 bg-zinc-100/50 rounded-2xl border border-zinc-200/40 text-center">
+        <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
+          💡 <b>보존 정책:</b> 로그인 없이 업로드 시 <b>24시간(1일)</b> 보존 후 자동 삭제되며, 일반 로그인은 <b>7일</b>, 관리자는 <b>영구 보존</b>됩니다.
+        </p>
+      </div>
     </div>
   );
 }
