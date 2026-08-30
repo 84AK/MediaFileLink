@@ -6,11 +6,16 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    // 1. 보안 시크릿 키 검증
+    // 1. 보안 시크릿 키 검증 (Vercel Cron Bearer 헤더 또는 Query param 지원)
     const { searchParams } = new URL(request.url);
-    const secret = searchParams.get('secret');
+    const secretParam = searchParams.get('secret');
+    const authHeader = request.headers.get('authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
-    if (!secret || secret !== process.env.CRON_SECRET) {
+    const cronSecret = process.env.CRON_SECRET;
+    const isAuthorized = cronSecret && (secretParam === cronSecret || bearerToken === cronSecret);
+
+    if (!isAuthorized) {
       return NextResponse.json({ error: 'Unauthorized: Invalid cron secret' }, { status: 401 });
     }
 

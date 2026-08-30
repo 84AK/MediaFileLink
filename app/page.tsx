@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import UploadZone from '@/components/UploadZone';
 import MediaCard from '@/components/MediaCard';
-import { LayoutGrid, History, Sparkles, Globe, Loader2 } from 'lucide-react';
+import { LayoutGrid, History, Sparkles, Globe, Loader2, RotateCw } from 'lucide-react';
 
 interface MediaItem {
   id: string;
@@ -30,11 +30,26 @@ export default function Page() {
   // 필터 및 다중 선택 상태 추가
   const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isCleaning, setIsCleaning] = useState(false);
 
-  // 필터링된 이미지 목록 산출
+  // 만료 여부 판별 함수 (밀리초 단위 엄격 비교)
+  const isExpired = (expiresAt?: string | null) => {
+    if (!expiresAt) return false;
+    const expTime = new Date(expiresAt).getTime();
+    if (isNaN(expTime)) return false;
+    return expTime <= Date.now();
+  };
+
+  // 필터링된 이미지 목록 산출 (비관리자는 만료된 파일 즉시 제외)
+  const validItems = isAdmin
+    ? items
+    : items.filter(item => !isExpired(item.expires_at));
+
   const displayedItems = filterMode === 'mine' && user && !user.is_anonymous
-    ? items.filter(item => item.user_id === user.id)
-    : items;
+    ? validItems.filter(item => item.user_id === user.id)
+    : validItems;
+
+  const expiredCount = items.filter(item => isExpired(item.expires_at)).length;
 
   // 개별 선택 토글 핸들러
   const handleToggleSelect = (id: string) => {
@@ -127,6 +142,31 @@ export default function Page() {
       alert(`일괄 삭제 실패: ${err.message || '오류가 발생했습니다.'}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 관리자 전용: 만료 미디어 강제 정리 핸들러
+  const handleRunCleanup = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm(`기한이 만료된 파일(총 ${expiredCount}개)을 서버 및 스토리지에서 영구 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    setIsCleaning(true);
+    try {
+      const secret = process.env.NEXT_PUBLIC_CRON_SECRET || 'medialink_hub_cron_secret_key_2026_06_03';
+      const res = await fetch(`/api/cron/cleanup?secret=${encodeURIComponent(secret)}`);
+      const data = await res.json();
+      if (res.ok) {
+        alert(`만료된 미디어 ${data.count || 0}개가 성공적으로 정리되었습니다.`);
+        fetchItems();
+      } else {
+        alert(`만료 미디어 정리 실패: ${data.error || '알 수 없는 에러가 발생했습니다.'}`);
+      }
+    } catch (e: any) {
+      alert(`정리 요청 중 오류 발생: ${e.message}`);
+    } finally {
+      setIsCleaning(false);
     }
   };
 
@@ -555,8 +595,20 @@ create policy "Allow delete for owners and admin" on storage.objects for delete 
               )}
             </div>
 
-            {/* Right: bulk actions */}
-            <div className="flex items-center gap-2 justify-end">
+            {/* Right: bulk actions & Admin cleanup */}
+            <div className="flex items-center gap-2 justify-end flex-wrap">
+              {isAdmin && expiredCount > 0 && (
+                <button
+                  onClick={handleRunCleanup}
+                  disabled={isCleaning}
+                  className="px-3.5 py-2.5 text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800 rounded-xl hover:bg-amber-100 transition-all shadow-sm flex items-center gap-1.5"
+                  title="만료된 미디어를 스토리지와 DB에서 즉시 영구 삭제합니다."
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${isCleaning ? 'animate-spin text-amber-600' : 'text-amber-500'}`} />
+                  <span>만료 정리 ({expiredCount})</span>
+                </button>
+              )}
+
               <button
                 onClick={handleSelectAll}
                 className="px-4 py-2.5 text-xs font-bold bg-white border border-zinc-200 text-zinc-700 rounded-xl hover:bg-zinc-50 transition-all shadow-sm"

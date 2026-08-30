@@ -4,7 +4,6 @@ import React from 'react';
 import { Copy, Trash2, ExternalLink, Image as ImageIcon, Film, Music, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import Image from 'next/image';
 
 interface MediaItem {
   id: string;
@@ -84,11 +83,11 @@ export default function MediaCard({
         )}
         {item.file_type === 'image' ? (
           <div className="relative w-full h-full">
-            <Image
+            <img
               src={item.file_url}
               alt={item.file_name}
-              fill
-              className="object-cover group-hover:scale-110 transition-transform duration-700"
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+              loading="lazy"
               referrerPolicy="no-referrer"
             />
           </div>
